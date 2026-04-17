@@ -149,7 +149,14 @@ function filterShorts(root) {
   });
 }
 
+function isPlaylistsPage() {
+  const p = window.location.pathname;
+  // /feed/playlists (library) or /@handle/playlists / /channel/x/playlists (channel tab)
+  return p === '/feed/playlists' || p.endsWith('/playlists');
+}
+
 function filterPlaylists(root) {
+  if (isPlaylistsPage()) return;
   queryAll(root,
     'ytd-playlist-renderer, ytd-compact-playlist-renderer, ytd-grid-playlist-renderer'
   ).forEach(sanitise);

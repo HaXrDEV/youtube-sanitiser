@@ -7,7 +7,7 @@ A Chrome extension that removes unwanted content from YouTube so only the videos
 | Filter | What it hides |
 |---|---|
 | **Hide Shorts** | The Shorts shelf on the homepage and Shorts in the watch-page sidebar |
-| **Hide Playlists** | Playlist cards in the feed and sidebar |
+| **Hide Playlists** | Playlist cards in the feed and sidebar (not applied on `/feed/playlists` or channel playlist tabs) |
 | **Hide Mixes** | YouTube-generated auto-mix playlists |
 | **Hide low view count** | Videos below a configurable minimum view threshold |
 | ↳ **Minimum views** | The view count threshold (default 10,000) |
