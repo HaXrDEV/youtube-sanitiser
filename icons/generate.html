@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>YouTube Sanitiser — Icon Generator</title>
+  <style>
+    body { font-family: Arial, sans-serif; background: #1a1a1a; color: #eee; padding: 24px; }
+    h2 { margin-bottom: 16px; color: #ff0000; }
+    p  { margin-bottom: 20px; color: #aaa; font-size: 14px; }
+    .icons { display: flex; gap: 24px; align-items: flex-end; flex-wrap: wrap; }
+    .icon-wrap { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+    canvas { border: 1px solid #444; border-radius: 4px; }
+    a.btn {
+      display: inline-block; padding: 6px 14px;
+      background: #ff0000; color: #fff; border-radius: 4px;
+      text-decoration: none; font-size: 13px;
+    }
+    a.btn:hover { background: #cc0000; }
+    .label { font-size: 12px; color: #888; }
+    .instructions {
+      margin-top: 24px; padding: 16px; background: #2a2a2a;
+      border-radius: 6px; font-size: 13px; line-height: 1.7; color: #ccc;
+    }
+    code { background: #333; padding: 2px 5px; border-radius: 3px; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <h2>YouTube Sanitiser — Icon Generator</h2>
+  <p>Click each download link to save the icon file, then place it in the <code>icons/</code> folder.</p>
+
+  <div class="icons" id="iconContainer"></div>
+
+  <div class="instructions">
+    <strong>Steps:</strong><br/>
+    1. Download all three icons below.<br/>
+    2. Save them as <code>icons/icon16.png</code>, <code>icons/icon48.png</code>, and <code>icons/icon128.png</code>.<br/>
+    3. Go to <code>chrome://extensions</code>, enable <strong>Developer mode</strong>, and click <strong>Load unpacked</strong>.<br/>
+    4. Select the <code>youtube-sanitiser</code> folder. Done!
+  </div>
+
+  <script>
+    const sizes = [16, 48, 128];
+
+    sizes.forEach(size => {
+      const canvas = document.createElement('canvas');
+      canvas.width  = size;
+      canvas.height = size;
+      const ctx = canvas.getContext('2d');
+
+      // Background: dark rounded rect
+      const radius = size * 0.18;
+      ctx.fillStyle = '#212121';
+      ctx.beginPath();
+      ctx.roundRect(0, 0, size, size, radius);
+      ctx.fill();
+
+      // Red play-button triangle (YouTube-ish)
+      const cx = size * 0.48;
+      const cy = size * 0.5;
+      const th = size * 0.42; // triangle height
+      const tw = size * 0.36; // triangle width
+
+      ctx.fillStyle = '#ff0000';
+      ctx.beginPath();
+      ctx.moveTo(cx - tw * 0.5, cy - th * 0.5);
+      ctx.lineTo(cx - tw * 0.5, cy + th * 0.5);
+      ctx.lineTo(cx + tw * 0.7, cy);
+      ctx.closePath();
+      ctx.fill();
+
+      // White filter lines on the right side (≡ style)
+      if (size >= 48) {
+        const lx = cx + tw * 0.55;
+        const lineW = size * 0.16;
+        const gap   = size * 0.08;
+        ctx.fillStyle = '#ffffff';
+        [-1, 0, 1].forEach((i, idx) => {
+          const w = lineW * (1 - idx * 0.2);
+          const y = cy + i * gap - size * 0.025;
+          ctx.fillRect(lx, y, w, size * 0.06);
+        });
+      }
+
+      // Create download link
+      const wrap = document.createElement('div');
+      wrap.className = 'icon-wrap';
+
+      const label = document.createElement('div');
+      label.className = 'label';
+      label.textContent = `${size}×${size}`;
+
+      const link = document.createElement('a');
+      link.className = 'btn';
+      link.textContent = `Download icon${size}.png`;
+      link.download = `icon${size}.png`;
+      link.href = canvas.toDataURL('image/png');
+
+      wrap.appendChild(canvas);
+      wrap.appendChild(label);
+      wrap.appendChild(link);
+      document.getElementById('iconContainer').appendChild(wrap);
+    });
+  </script>
+</body>
+</html>

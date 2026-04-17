@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>YouTube Sanitiser</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <header>
+    <span class="logo">&#9654;</span>
+    <h1>YouTube Sanitiser</h1>
+  </header>
+
+  <main>
+    <div class="filter-row">
+      <label class="filter-label" for="hideShorts">Hide Shorts</label>
+      <label class="toggle">
+        <input type="checkbox" id="hideShorts" />
+        <span class="slider"></span>
+      </label>
+    </div>
+
+    <div class="filter-row">
+      <label class="filter-label" for="hidePlaylists">Hide Playlists</label>
+      <label class="toggle">
+        <input type="checkbox" id="hidePlaylists" />
+        <span class="slider"></span>
+      </label>
+    </div>
+
+    <div class="filter-row">
+      <label class="filter-label" for="hideMixes">Hide Mixes</label>
+      <label class="toggle">
+        <input type="checkbox" id="hideMixes" />
+        <span class="slider"></span>
+      </label>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="filter-row">
+      <label class="filter-label" for="hideLowViews">Hide low view count</label>
+      <label class="toggle">
+        <input type="checkbox" id="hideLowViews" />
+        <span class="slider"></span>
+      </label>
+    </div>
+
+    <div class="filter-row sub-row" id="minViewsRow">
+      <label class="filter-label sub-label" for="minViews">Minimum views</label>
+      <input type="text" id="minViews" class="views-input" placeholder="10,000" inputmode="numeric" />
+    </div>
+  </main>
+
+  <script src="popup.js"></script>
+</body>
+</html>

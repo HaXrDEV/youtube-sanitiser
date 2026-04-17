@@ -1,0 +1,164 @@
+/* ── Reset & base ─────────────────────────────────────────────────────────── */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  width: 280px;
+  font-family: 'Roboto', Arial, sans-serif;
+  font-size: 14px;
+  background: #212121;
+  color: #e0e0e0;
+  user-select: none;
+}
+
+/* ── Header ───────────────────────────────────────────────────────────────── */
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 16px 12px;
+  border-bottom: 1px solid #383838;
+}
+
+.logo {
+  color: #ff0000;
+  font-size: 18px;
+  line-height: 1;
+}
+
+h1 {
+  font-size: 15px;
+  font-weight: 500;
+  color: #ffffff;
+  letter-spacing: 0.2px;
+}
+
+/* ── Main content ─────────────────────────────────────────────────────────── */
+
+main {
+  padding: 8px 0 12px;
+}
+
+/* ── Filter rows ──────────────────────────────────────────────────────────── */
+
+.filter-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 16px;
+  transition: background 0.15s;
+}
+
+.filter-row:hover {
+  background: #2a2a2a;
+}
+
+.filter-label {
+  color: #e0e0e0;
+  font-size: 13.5px;
+  cursor: pointer;
+}
+
+/* ── Sub-row (min views input) ────────────────────────────────────────────── */
+
+.sub-row {
+  padding-top: 6px;
+  padding-bottom: 10px;
+}
+
+.sub-label {
+  color: #aaaaaa;
+  font-size: 13px;
+}
+
+.sub-row.hidden {
+  display: none;
+}
+
+/* ── Views input ──────────────────────────────────────────────────────────── */
+
+.views-input {
+  width: 100px;
+  padding: 5px 9px;
+  background: #2e2e2e;
+  border: 1px solid #484848;
+  border-radius: 4px;
+  color: #e0e0e0;
+  font-size: 13px;
+  text-align: right;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.views-input:focus {
+  border-color: #ff0000;
+}
+
+.views-input:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ── Divider ──────────────────────────────────────────────────────────────── */
+
+.divider {
+  height: 1px;
+  background: #383838;
+  margin: 4px 0;
+}
+
+/* ── Toggle switch ────────────────────────────────────────────────────────── */
+
+.toggle {
+  position: relative;
+  display: inline-block;
+  width: 40px;
+  height: 22px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.toggle input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+  position: absolute;
+}
+
+.slider {
+  position: absolute;
+  inset: 0;
+  background: #555555;
+  border-radius: 22px;
+  transition: background 0.2s;
+}
+
+.slider::before {
+  content: '';
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  left: 3px;
+  top: 3px;
+  background: #ffffff;
+  border-radius: 50%;
+  transition: transform 0.2s;
+}
+
+.toggle input:checked + .slider {
+  background: #ff0000;
+}
+
+.toggle input:checked + .slider::before {
+  transform: translateX(18px);
+}
+
+.toggle input:focus-visible + .slider {
+  outline: 2px solid #ff0000;
+  outline-offset: 2px;
+}
