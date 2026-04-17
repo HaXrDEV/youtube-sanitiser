@@ -139,9 +139,17 @@ function filterShorts(root) {
 }
 
 function filterPlaylists(root) {
+  // Legacy renderers
   root.querySelectorAll(
     'ytd-playlist-renderer, ytd-compact-playlist-renderer, ytd-grid-playlist-renderer'
   ).forEach(sanitise);
+
+  // New lockup layout: YouTube playlists have IDs starting with "PL",
+  // reflected as a "content-id-PL…" CSS class
+  root.querySelectorAll('[class*="content-id-PL"]').forEach(el => {
+    const item = el.closest('ytd-rich-item-renderer, ytd-compact-video-renderer');
+    if (item) sanitise(item);
+  });
 }
 
 function filterMixes(root) {
