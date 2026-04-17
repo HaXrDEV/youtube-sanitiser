@@ -38,6 +38,17 @@ function unsanitise(el) {
   el.classList.remove('yt-sanitised');
 }
 
+/**
+ * Like querySelectorAll but also tests root itself.
+ * Needed because MutationObserver delivers the added node directly —
+ * node.querySelectorAll(sel) only searches descendants, never self.
+ */
+function queryAll(root, selector) {
+  const els = Array.from(root.querySelectorAll(selector));
+  if (root.matches?.(selector)) els.unshift(root);
+  return els;
+}
+
 // Words meaning "views" in supported languages
 const VIEW_WORD_RE = /views?|visning[ae]r?|aufrufe?|vues?|visualizaç[õo]es?|visualizaciones?|visualizzazioni?|weergaven?|näyttö[äa]|katselukertaa?|wyświetleń|просмотр\w*|görüntüleme|tayangan/i;
 
@@ -116,50 +127,32 @@ function getViewCount(el) {
 // ─── Filter functions ─────────────────────────────────────────────────────────
 
 function filterShorts(root) {
-  // Full Shorts shelf (homepage)
-  root.querySelectorAll('ytd-rich-shelf-renderer[is-shorts]').forEach(sanitise);
-
-  // Individual reel items inside a shelf
-  root.querySelectorAll('ytd-reel-item-renderer').forEach(el => {
-    const parent = el.closest('ytd-rich-item-renderer') || el;
-    sanitise(parent);
+  queryAll(root, 'ytd-rich-shelf-renderer[is-shorts]').forEach(sanitise);
+  queryAll(root, 'ytd-reel-item-renderer').forEach(el => {
+    sanitise(el.closest('ytd-rich-item-renderer') || el);
   });
-
-  // Shorts in the watch-page sidebar — compact renderers whose overlay says "Shorts"
-  root.querySelectorAll('ytd-compact-video-renderer').forEach(el => {
+  queryAll(root, 'ytd-compact-video-renderer').forEach(el => {
     if (
       el.querySelector('[overlay-style="SHORTS"]') ||
       el.querySelector('ytd-thumbnail-overlay-time-status-renderer[overlay-style="SHORTS"]')
-    ) {
-      sanitise(el);
-    }
+    ) sanitise(el);
   });
-
-  // Reel shelf in search / feed
-  root.querySelectorAll('ytd-reel-shelf-renderer').forEach(sanitise);
+  queryAll(root, 'ytd-reel-shelf-renderer').forEach(sanitise);
 }
 
 function filterPlaylists(root) {
-  // Legacy renderers
-  root.querySelectorAll(
+  queryAll(root,
     'ytd-playlist-renderer, ytd-compact-playlist-renderer, ytd-grid-playlist-renderer'
   ).forEach(sanitise);
-
-  // New lockup layout: YouTube playlists have IDs starting with "PL",
-  // reflected as a "content-id-PL…" CSS class
-  root.querySelectorAll('[class*="content-id-PL"]').forEach(el => {
+  queryAll(root, '[class*="content-id-PL"]').forEach(el => {
     const item = el.closest('ytd-rich-item-renderer, ytd-compact-video-renderer');
     if (item) sanitise(item);
   });
 }
 
 function filterMixes(root) {
-  // Legacy renderers
-  root.querySelectorAll('ytd-radio-renderer, ytd-compact-radio-renderer').forEach(sanitise);
-
-  // New lockup layout: YouTube auto-generated mix playlists always have
-  // an ID starting with "RD", reflected as a "content-id-RD…" CSS class
-  root.querySelectorAll('[class*="content-id-RD"]').forEach(el => {
+  queryAll(root, 'ytd-radio-renderer, ytd-compact-radio-renderer').forEach(sanitise);
+  queryAll(root, '[class*="content-id-RD"]').forEach(el => {
     const item = el.closest('ytd-rich-item-renderer, ytd-compact-video-renderer');
     if (item) sanitise(item);
   });
@@ -238,12 +231,8 @@ function getChannelPath(el) {
 }
 
 function filterLowViews(root, minViews) {
-  const selectors = [
-    'ytd-rich-item-renderer',
-    'ytd-video-renderer',
-    'ytd-compact-video-renderer',
-  ];
-  root.querySelectorAll(selectors.join(',')).forEach(el => {
+  const selector = 'ytd-rich-item-renderer, ytd-video-renderer, ytd-compact-video-renderer';
+  queryAll(root, selector).forEach(el => {
     // Don't touch elements already hidden by another filter
     if (el.classList.contains('yt-sanitised')) return;
     const count = getViewCount(el);
@@ -283,12 +272,33 @@ function fullRescan() {
 
 // ─── MutationObserver — catch dynamically added content ──────────────────────
 
+const VIDEO_RENDERER_SELECTOR =
+  'ytd-rich-item-renderer, ytd-compact-video-renderer, ytd-video-renderer';
+
+const VIDEO_RENDERER_TAGS = new Set([
+  'YTD-RICH-ITEM-RENDERER',
+  'YTD-COMPACT-VIDEO-RENDERER',
+  'YTD-VIDEO-RENDERER',
+]);
+
 const observer = new MutationObserver(mutations => {
+  // Deduplicate: for each added node also climb to the nearest video renderer,
+  // so metadata injected after its container (lazy-load on scroll) triggers a
+  // filter pass on that container.
+  const pending = new Set();
   for (const mutation of mutations) {
     for (const node of mutation.addedNodes) {
-      if (node.nodeType === Node.ELEMENT_NODE) {
-        applyFilters(/** @type {Element} */ (node));
-      }
+      if (node.nodeType !== Node.ELEMENT_NODE) continue;
+      pending.add(/** @type {Element} */ (node));
+      const renderer = /** @type {Element} */ (node).closest?.(VIDEO_RENDERER_SELECTOR);
+      if (renderer) pending.add(renderer);
+    }
+  }
+  for (const node of pending) {
+    applyFilters(node);
+    // Fresh renderer containers may still lack metadata — re-check after it settles.
+    if (VIDEO_RENDERER_TAGS.has(node.tagName)) {
+      setTimeout(() => applyFilters(node), 800);
     }
   }
 });
