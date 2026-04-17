@@ -37,20 +37,63 @@ function unsanitise(el) {
   el.classList.remove('yt-sanitised');
 }
 
+// Words meaning "views" in supported languages
+const VIEW_WORD_RE = /views?|visning[ae]r?|aufrufe?|vues?|visualizaç[õo]es?|visualizaciones?|visualizzazioni?|weergaven?|näyttö[äa]|katselukertaa?|wyświetleń|просмотр\w*|görüntüleme|tayangan/i;
+
+// Magnitude suffix multipliers across locales (keys lowercased, trailing dot stripped)
+const VIEW_SUFFIX_MULTIPLIERS = {
+  'k': 1e3, 'm': 1e6, 'b': 1e9,         // English
+  't': 1e3, 'mio': 1e6, 'mia': 1e9,     // Danish/Norwegian (tusind, million, milliard)
+  'tn': 1e3, 'mn': 1e6, 'md': 1e9,      // Swedish (tusen, miljon, miljard)
+  'tsd': 1e3, 'mrd': 1e9,                // German (Tausend, Milliarde)
+  'mil': 1e6,                             // Spanish/Portuguese (millones/milhões)
+};
+
 /**
- * Parse a YouTube view-count string like "1.2K views" → 1200.
- * Returns null if unparseable.
+ * Parse a number string that may use either comma or period as the
+ * thousands/decimal separator. Returns a float or NaN.
+ *
+ * Rules:
+ *   both present → whichever appears last is the decimal separator
+ *   only comma   → ≤2 digits after comma = decimal ("1,5"); else thousands ("1,234")
+ *   only dot     → exactly 3 digits after dot, or multiple dots = thousands ("1.234")
+ */
+function parseLocaleNumber(str) {
+  if (str.includes(',') && str.includes('.')) {
+    const lastComma = str.lastIndexOf(',');
+    const lastDot   = str.lastIndexOf('.');
+    return lastDot > lastComma
+      ? parseFloat(str.replace(/,/g, ''))                     // "1,234.5"
+      : parseFloat(str.replace(/\./g, '').replace(',', '.'));  // "1.234,5"
+  }
+  if (str.includes(',')) {
+    const afterComma = str.split(',')[1] || '';
+    return afterComma.length <= 2
+      ? parseFloat(str.replace(',', '.'))   // "1,5" → decimal comma
+      : parseFloat(str.replace(/,/g, ''));  // "1,234" → thousands comma
+  }
+  if (str.includes('.')) {
+    const parts = str.split('.');
+    return (parts.length > 2 || parts[parts.length - 1].length === 3)
+      ? parseFloat(str.replace(/\./g, ''))  // "1.234" / "1.234.567" → thousands dot
+      : parseFloat(str);                    // "1.5" → decimal dot
+  }
+  return parseFloat(str);
+}
+
+/**
+ * Parse a YouTube view-count string in any supported language.
+ * Examples: "1.2K views", "1,2 t. visninger", "1.234 Aufrufe"
+ * Returns a number or null.
  */
 function parseViewText(text) {
-  const m = text.match(/([\d,.]+)\s*([KMBkmb]?)\s*views?/i);
+  // Capture leading number + optional magnitude suffix (e.g. "K", "t.", "mio.")
+  const m = text.match(/^([\d.,]+)\s*([A-Za-zА-Яа-яÀ-ÿ]*\.?)/);
   if (!m) return null;
-  let n = parseFloat(m[1].replace(/,/g, ''));
+  const n = parseLocaleNumber(m[1]);
   if (isNaN(n)) return null;
-  const suffix = m[2].toUpperCase();
-  if (suffix === 'K') n *= 1e3;
-  else if (suffix === 'M') n *= 1e6;
-  else if (suffix === 'B') n *= 1e9;
-  return n;
+  const suffix = m[2].toLowerCase().replace(/\.$/, '');
+  return n * (VIEW_SUFFIX_MULTIPLIERS[suffix] || 1);
 }
 
 /**
@@ -58,13 +101,10 @@ function parseViewText(text) {
  * Returns a number or null.
  */
 function getViewCount(el) {
-  // Metadata lines contain view count + upload date spans
-  const spans = el.querySelectorAll(
-    '#metadata-line span, #metadata span, .ytd-video-meta-block span'
-  );
+  const spans = el.querySelectorAll('span');
   for (const span of spans) {
     const text = span.textContent.trim();
-    if (/views?/i.test(text)) {
+    if (VIEW_WORD_RE.test(text)) {
       const count = parseViewText(text);
       if (count !== null) return count;
     }
