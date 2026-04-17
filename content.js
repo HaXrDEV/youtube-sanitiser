@@ -16,11 +16,12 @@
 // ─── Default settings ─────────────────────────────────────────────────────────
 
 const DEFAULTS = {
-  hideShorts:    true,
-  hidePlaylists: true,
-  hideMixes:     true,
-  hideLowViews:  false,
-  minViews:      10000,
+  hideShorts:        true,
+  hidePlaylists:     true,
+  hideMixes:         true,
+  hideLowViews:      false,
+  minViews:          10000,
+  excludeSubscribed: false,
 };
 
 let settings = { ...DEFAULTS };
@@ -164,6 +165,78 @@ function filterMixes(root) {
   });
 }
 
+// ─── Subscription cache ───────────────────────────────────────────────────────
+
+/**
+ * In-memory set of known subscribed channel paths (e.g. "/@ChannelName").
+ * Populated by reading the guide sidebar, expanding it if needed.
+ */
+let cachedSubscriptions = new Set();
+
+function readGuideChannels() {
+  document.querySelectorAll('ytd-guide-entry-renderer a[href^="/@"]')
+    .forEach(a => cachedSubscriptions.add(a.getAttribute('href').split('?')[0]));
+}
+
+/**
+ * Find the first non-navigating toggle button in the guide subscriptions
+ * section (the "Show more" / "Show less" button). It is identified as the
+ * first href-less guide entry that follows at least one channel entry.
+ * Pass skipHidden=true to ignore CSS-hidden entries (used when collapsing,
+ * so we don't accidentally re-click the now-hidden "Show more").
+ */
+function findGuideToggle(skipHidden = false) {
+  let seenChannel = false;
+  return [...document.querySelectorAll('ytd-guide-entry-renderer')].find(el => {
+    if (skipHidden && el.offsetParent === null) return false;
+    const href = el.querySelector('a')?.getAttribute('href');
+    if (href?.startsWith('/@') || href?.startsWith('/channel/')) { seenChannel = true; return false; }
+    return seenChannel && !href;
+  });
+}
+
+function expandGuideSubscriptions() {
+  const before = cachedSubscriptions.size;
+  readGuideChannels();
+
+  const showMore = findGuideToggle();
+  if (showMore) {
+    showMore.click();
+    setTimeout(() => {
+      readGuideChannels();
+      if (settings.excludeSubscribed && cachedSubscriptions.size !== before) fullRescan();
+      findGuideToggle(true)?.click(); // collapse back ("Show less")
+    }, 400);
+  } else if (settings.excludeSubscribed && cachedSubscriptions.size !== before) {
+    fullRescan();
+  }
+}
+
+/**
+ * Wait for the guide sidebar to render subscription entries, then expand
+ * and read them. The guide loads asynchronously after the page content,
+ * so we observe the DOM rather than relying on a fixed point in time.
+ */
+function watchForGuide() {
+  if (document.querySelector('ytd-guide-entry-renderer a[href^="/@"]')) {
+    expandGuideSubscriptions();
+    return;
+  }
+  const watcher = new MutationObserver(() => {
+    if (document.querySelector('ytd-guide-entry-renderer a[href^="/@"]')) {
+      watcher.disconnect();
+      expandGuideSubscriptions();
+    }
+  });
+  watcher.observe(document.body, { childList: true, subtree: true });
+}
+
+/** Returns the channel path for a video card element, or null. */
+function getChannelPath(el) {
+  const a = el.querySelector('a[href^="/@"], a[href^="/channel/"]');
+  return a ? a.getAttribute('href').split('?')[0] : null;
+}
+
 function filterLowViews(root, minViews) {
   const selectors = [
     'ytd-rich-item-renderer',
@@ -175,6 +248,10 @@ function filterLowViews(root, minViews) {
     if (el.classList.contains('yt-sanitised')) return;
     const count = getViewCount(el);
     if (count !== null && count < minViews) {
+      if (settings.excludeSubscribed) {
+        const channelPath = getChannelPath(el);
+        if (channelPath && cachedSubscriptions.has(channelPath)) return;
+      }
       sanitise(el);
     }
   });
@@ -236,6 +313,8 @@ chrome.storage.sync.get(DEFAULTS, stored => {
   settings = { ...DEFAULTS, ...stored };
   applyFilters(document.body);
 });
+
+watchForGuide();
 
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== 'sync') return;

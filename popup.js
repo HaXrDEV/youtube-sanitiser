@@ -4,11 +4,12 @@
  */
 
 const DEFAULTS = {
-  hideShorts:    true,
-  hidePlaylists: true,
-  hideMixes:     true,
-  hideLowViews:  false,
-  minViews:      10000,
+  hideShorts:        true,
+  hidePlaylists:     true,
+  hideMixes:         true,
+  hideLowViews:      false,
+  minViews:          10000,
+  excludeSubscribed: false,
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -30,15 +31,18 @@ function getEl(id) {
   return document.getElementById(id);
 }
 
-/** Show/hide and enable/disable the min-views sub-row */
-function updateMinViewsVisibility(show) {
-  const row = getEl('minViewsRow');
+/** Show/hide the sub-rows that appear under "Hide low view count" */
+function updateLowViewsSubRows(show) {
+  const minViewsRow = getEl('minViewsRow');
   const input = getEl('minViews');
+  const excludeRow = getEl('excludeSubscribedRow');
   if (show) {
-    row.classList.remove('hidden');
+    minViewsRow.classList.remove('hidden');
+    excludeRow.classList.remove('hidden');
     input.disabled = false;
   } else {
-    row.classList.add('hidden');
+    minViewsRow.classList.add('hidden');
+    excludeRow.classList.add('hidden');
     input.disabled = true;
   }
 }
@@ -46,23 +50,25 @@ function updateMinViewsVisibility(show) {
 // ─── Populate UI from settings ────────────────────────────────────────────────
 
 function applyToUI(s) {
-  getEl('hideShorts').checked    = !!s.hideShorts;
-  getEl('hidePlaylists').checked = !!s.hidePlaylists;
-  getEl('hideMixes').checked     = !!s.hideMixes;
-  getEl('hideLowViews').checked  = !!s.hideLowViews;
-  getEl('minViews').value        = formatNumber(s.minViews ?? DEFAULTS.minViews);
-  updateMinViewsVisibility(!!s.hideLowViews);
+  getEl('hideShorts').checked        = !!s.hideShorts;
+  getEl('hidePlaylists').checked     = !!s.hidePlaylists;
+  getEl('hideMixes').checked         = !!s.hideMixes;
+  getEl('hideLowViews').checked      = !!s.hideLowViews;
+  getEl('minViews').value            = formatNumber(s.minViews ?? DEFAULTS.minViews);
+  getEl('excludeSubscribed').checked = !!s.excludeSubscribed;
+  updateLowViewsSubRows(!!s.hideLowViews);
 }
 
 // ─── Read current UI state into a settings object ────────────────────────────
 
 function readFromUI() {
   return {
-    hideShorts:    getEl('hideShorts').checked,
-    hidePlaylists: getEl('hidePlaylists').checked,
-    hideMixes:     getEl('hideMixes').checked,
-    hideLowViews:  getEl('hideLowViews').checked,
-    minViews:      parseNumber(getEl('minViews').value),
+    hideShorts:        getEl('hideShorts').checked,
+    hidePlaylists:     getEl('hidePlaylists').checked,
+    hideMixes:         getEl('hideMixes').checked,
+    hideLowViews:      getEl('hideLowViews').checked,
+    minViews:          parseNumber(getEl('minViews').value),
+    excludeSubscribed: getEl('excludeSubscribed').checked,
   };
 }
 
@@ -71,7 +77,7 @@ function readFromUI() {
 function save() {
   const s = readFromUI();
   chrome.storage.sync.set(s);
-  updateMinViewsVisibility(s.hideLowViews);
+  updateLowViewsSubRows(s.hideLowViews);
 }
 
 // ─── Initialise ───────────────────────────────────────────────────────────────
@@ -83,7 +89,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // Wire up all checkboxes to auto-save
-  ['hideShorts', 'hidePlaylists', 'hideMixes', 'hideLowViews'].forEach(id => {
+  ['hideShorts', 'hidePlaylists', 'hideMixes', 'hideLowViews', 'excludeSubscribed'].forEach(id => {
     getEl(id).addEventListener('change', save);
   });
 
