@@ -9,7 +9,11 @@
 (function injectStyles() {
   const style = document.createElement('style');
   style.id = 'yt-sanitiser-styles';
-  style.textContent = '.yt-sanitised { display: none !important; }';
+  style.textContent = [
+    '.yt-sanitised { display: none !important; }',
+    // Collapse grid rows whose video cards are all hidden
+    'ytd-rich-grid-row:has(ytd-rich-item-renderer.yt-sanitised):not(:has(ytd-rich-item-renderer:not(.yt-sanitised))) { display: none !important; }',
+  ].join('\n');
   (document.head || document.documentElement).appendChild(style);
 })();
 
@@ -127,7 +131,10 @@ function getViewCount(el) {
 // ─── Filter functions ─────────────────────────────────────────────────────────
 
 function filterShorts(root) {
-  queryAll(root, 'ytd-rich-shelf-renderer[is-shorts]').forEach(sanitise);
+  // Climb to ytd-rich-section-renderer so its padding/margin collapses too
+  queryAll(root, 'ytd-rich-shelf-renderer[is-shorts]').forEach(el => {
+    sanitise(el.closest('ytd-rich-section-renderer') || el);
+  });
   queryAll(root, 'ytd-reel-item-renderer').forEach(el => {
     sanitise(el.closest('ytd-rich-item-renderer') || el);
   });
@@ -137,7 +144,9 @@ function filterShorts(root) {
       el.querySelector('ytd-thumbnail-overlay-time-status-renderer[overlay-style="SHORTS"]')
     ) sanitise(el);
   });
-  queryAll(root, 'ytd-reel-shelf-renderer').forEach(sanitise);
+  queryAll(root, 'ytd-reel-shelf-renderer').forEach(el => {
+    sanitise(el.closest('ytd-rich-section-renderer') || el);
+  });
 }
 
 function filterPlaylists(root) {
