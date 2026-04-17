@@ -145,9 +145,15 @@ function filterPlaylists(root) {
 }
 
 function filterMixes(root) {
-  root.querySelectorAll(
-    'ytd-radio-renderer, ytd-compact-radio-renderer'
-  ).forEach(sanitise);
+  // Legacy renderers
+  root.querySelectorAll('ytd-radio-renderer, ytd-compact-radio-renderer').forEach(sanitise);
+
+  // New lockup layout: YouTube auto-generated mix playlists always have
+  // an ID starting with "RD", reflected as a "content-id-RD…" CSS class
+  root.querySelectorAll('[class*="content-id-RD"]').forEach(el => {
+    const item = el.closest('ytd-rich-item-renderer, ytd-compact-video-renderer');
+    if (item) sanitise(item);
+  });
 }
 
 function filterLowViews(root, minViews) {
