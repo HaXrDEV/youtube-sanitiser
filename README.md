@@ -6,6 +6,8 @@ A Chrome extension that strips unwanted content from YouTube so only the videos 
 ![Chrome](https://img.shields.io/badge/Chrome-extension-blue)
 ![No build step](https://img.shields.io/badge/build-none-lightgrey)
 
+![Screenshot](docs/screenshot.png)
+
 ---
 
 ## Filters
