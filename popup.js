@@ -1,16 +1,8 @@
 /**
- * YouTube Sanitiser — popup script
+ * YouTube Sanitiser: popup script
  * Loads settings from chrome.storage.sync and saves on every change.
+ * DEFAULTS comes from defaults.js, which popup.html loads first.
  */
-
-const DEFAULTS = {
-  hideShorts:        true,
-  hidePlaylists:     true,
-  hideMixes:         true,
-  hideLowViews:      false,
-  minViews:          10000,
-  excludeSubscribed: false,
-};
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -83,11 +75,15 @@ function save() {
 // ─── Initialise ───────────────────────────────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', () => {
-  // Load stored settings, fall back to defaults
+  // Load stored settings, fall back to defaults. Controls are only wired up
+  // once the UI holds the stored values, because save() writes the whole UI.
   chrome.storage.sync.get(DEFAULTS, stored => {
     applyToUI({ ...DEFAULTS, ...stored });
+    wireUpControls();
   });
+});
 
+function wireUpControls() {
   // Wire up all checkboxes to auto-save
   ['hideShorts', 'hidePlaylists', 'hideMixes', 'hideLowViews', 'excludeSubscribed'].forEach(id => {
     getEl(id).addEventListener('change', save);
@@ -115,4 +111,4 @@ document.addEventListener('DOMContentLoaded', () => {
   minViewsInput.addEventListener('input', () => {
     minViewsInput.value = minViewsInput.value.replace(/[^\d,]/g, '');
   });
-});
+}

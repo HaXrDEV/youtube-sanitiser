@@ -1,7 +1,8 @@
 /**
- * YouTube Sanitiser — content script
+ * YouTube Sanitiser: content script
  * Runs on every youtube.com page. Hides Shorts, playlists, mixes,
  * and low-view-count videos based on settings stored in chrome.storage.sync.
+ * DEFAULTS comes from defaults.js, which the manifest loads first.
  */
 
 // ─── Inject hide stylesheet once ─────────────────────────────────────────────
@@ -17,16 +18,7 @@
   (document.head || document.documentElement).appendChild(style);
 })();
 
-// ─── Default settings ─────────────────────────────────────────────────────────
-
-const DEFAULTS = {
-  hideShorts:        true,
-  hidePlaylists:     true,
-  hideMixes:         true,
-  hideLowViews:      false,
-  minViews:          10000,
-  excludeSubscribed: false,
-};
+// ─── Settings ─────────────────────────────────────────────────────────────────
 
 let settings = { ...DEFAULTS };
 
@@ -44,7 +36,7 @@ function unsanitise(el) {
 
 /**
  * Like querySelectorAll but also tests root itself.
- * Needed because MutationObserver delivers the added node directly —
+ * Needed because MutationObserver delivers the added node directly, and
  * node.querySelectorAll(sel) only searches descendants, never self.
  */
 function queryAll(root, selector) {
@@ -53,16 +45,32 @@ function queryAll(root, selector) {
   return els;
 }
 
-// Words meaning "views" in supported languages
-const VIEW_WORD_RE = /views?|visning[ae]r?|aufrufe?|vues?|visualizaç[õo]es?|visualizaciones?|visualizzazioni?|weergaven?|näyttö[äa]|katselukertaa?|wyświetleń|просмотр\w*|görüntüleme|tayangan/i;
+// A whole word meaning "views" in supported languages
+const VIEW_WORD_RE = /^(?:views?|visning(?:er|ar)?|aufrufe?|vues?|visualiza(?:ção|ções|ción|ciones)|visualizzazion[ei]|weergaven?|näyttö[äa]|katselukertaa?|wyświetle(?:ń|nia|nie)|просмотр\p{L}*|görüntüleme|tayangan)$/iu;
+
+// Zero-view phrasing, which has no number to parse
+const NO_VIEWS_RE = /^no views$/i;
 
 // Magnitude suffix multipliers across locales (keys lowercased, trailing dot stripped)
 const VIEW_SUFFIX_MULTIPLIERS = {
-  'k': 1e3, 'm': 1e6, 'b': 1e9,         // English
-  't': 1e3, 'mio': 1e6, 'mia': 1e9,     // Danish/Norwegian (tusind, million, milliard)
-  'tn': 1e3, 'mn': 1e6, 'md': 1e9,      // Swedish (tusen, miljon, miljard)
-  'tsd': 1e3, 'mrd': 1e9,                // German (Tausend, Milliarde)
-  'mil': 1e6,                             // Spanish/Portuguese (millones/milhões)
+  'k': 1e3, 'm': 1e6, 'b': 1e9,          // English (k/M also French, Dutch, Spanish)
+  't': 1e3, 'mio': 1e6, 'mia': 1e9,      // Danish (tusind, million, milliard)
+  'mill': 1e6, 'mrd': 1e9,               // Norwegian (million, milliard); mrd also German, Finnish, Italian
+  'tn': 1e3, 'mn': 1e6, 'md': 1e9,       // Swedish (tusen, miljon, miljard); md also French
+  'tsd': 1e3,                            // German (Tausend)
+  'mil': 1e3, 'mi': 1e6, 'bi': 1e9,      // Spanish/Portuguese (mil = thousand, milhões, bilhões)
+  'mln': 1e6, 'mld': 1e9,                // Dutch/Italian/Polish (miljoen, milione, milion; miljard, miliard)
+  'milj': 1e6,                           // Finnish (miljoonaa)
+  'tys': 1e3,                            // Polish (tysiąc)
+  'тыс': 1e3, 'млн': 1e6, 'млрд': 1e9,   // Russian
+  'mr': 1e9,                             // Turkish (milyar)
+  'rb': 1e3, 'jt': 1e6,                  // Indonesian (ribu, juta)
+};
+
+// Suffixes that mean something else in one locale, keyed by that locale's view word
+const VIEW_SUFFIX_OVERRIDES = {
+  'görüntüleme': { 'b': 1e3 },  // Turkish: B = bin (thousand)
+  'tayangan':    { 'm': 1e9 },  // Indonesian: M = miliar (billion)
 };
 
 /**
@@ -99,17 +107,23 @@ function parseLocaleNumber(str) {
 
 /**
  * Parse a YouTube view-count string in any supported language.
- * Examples: "1.2K views", "1,2 t. visninger", "1.234 Aufrufe"
- * Returns a number or null.
+ * Examples: "1.2K views", "1,2 t. visninger", "1.234 Aufrufe", "1,2 M de vues"
+ * The number must be followed by a view word, optionally with a known magnitude
+ * suffix (and "de"/"di") in between, so titles like "100 Reviews of ..." and
+ * unknown suffixes are rejected rather than guessed. Returns a number or null.
  */
 function parseViewText(text) {
-  // Capture leading number + optional magnitude suffix (e.g. "K", "t.", "mio.")
-  const m = text.match(/^([\d.,]+)\s*([A-Za-zА-Яа-яÀ-ÿ]*\.?)/);
+  if (NO_VIEWS_RE.test(text)) return 0;
+  const m = text.match(/^(\d[\d.,]*)\s*(.*)/su);
   if (!m) return null;
   const n = parseLocaleNumber(m[1]);
   if (isNaN(n)) return null;
-  const suffix = m[2].toLowerCase().replace(/\.$/, '');
-  return n * (VIEW_SUFFIX_MULTIPLIERS[suffix] || 1);
+  const [first, ...rest] = m[2].toLowerCase().split(/[\s.]+/);
+  if (VIEW_WORD_RE.test(first)) return n;
+  const viewWord = rest[0] === 'de' || rest[0] === 'di' ? rest[1] : rest[0];
+  if (!viewWord || !VIEW_WORD_RE.test(viewWord)) return null;
+  const multiplier = VIEW_SUFFIX_OVERRIDES[viewWord]?.[first] ?? VIEW_SUFFIX_MULTIPLIERS[first];
+  return multiplier ? n * multiplier : null;
 }
 
 /**
@@ -117,18 +131,31 @@ function parseViewText(text) {
  * Returns a number or null.
  */
 function getViewCount(el) {
-  const spans = el.querySelectorAll('span');
-  for (const span of spans) {
-    const text = span.textContent.trim();
-    if (VIEW_WORD_RE.test(text)) {
-      const count = parseViewText(text);
-      if (count !== null) return count;
-    }
+  for (const span of el.querySelectorAll('span')) {
+    const count = parseViewText(span.textContent.trim());
+    if (count !== null) return count;
   }
   return null;
 }
 
 // ─── Filter functions ─────────────────────────────────────────────────────────
+
+const VIDEO_RENDERER_SELECTOR =
+  'ytd-rich-item-renderer, ytd-compact-video-renderer, ytd-video-renderer';
+
+/**
+ * Hide lockups (YouTube's current card layout) whose content ID starts with
+ * prefix. Video IDs are always 11 characters, so this skips ordinary videos
+ * whose ID happens to start with the same letters.
+ */
+function filterLockups(root, prefix) {
+  queryAll(root, `[class*="content-id-${prefix}"]`).forEach(el => {
+    const id = [...el.classList].find(c => c.startsWith('content-id-'))?.slice('content-id-'.length);
+    if (!id?.startsWith(prefix) || id.length === 11) return;
+    const item = el.closest('ytd-rich-item-renderer, ytd-compact-video-renderer');
+    if (item) sanitise(item);
+  });
+}
 
 function filterShorts(root) {
   // Climb to ytd-rich-section-renderer so its padding/margin collapses too
@@ -160,18 +187,12 @@ function filterPlaylists(root) {
   queryAll(root,
     'ytd-playlist-renderer, ytd-compact-playlist-renderer, ytd-grid-playlist-renderer'
   ).forEach(sanitise);
-  queryAll(root, '[class*="content-id-PL"]').forEach(el => {
-    const item = el.closest('ytd-rich-item-renderer, ytd-compact-video-renderer');
-    if (item) sanitise(item);
-  });
+  filterLockups(root, 'PL');
 }
 
 function filterMixes(root) {
   queryAll(root, 'ytd-radio-renderer, ytd-compact-radio-renderer').forEach(sanitise);
-  queryAll(root, '[class*="content-id-RD"]').forEach(el => {
-    const item = el.closest('ytd-rich-item-renderer, ytd-compact-video-renderer');
-    if (item) sanitise(item);
-  });
+  filterLockups(root, 'RD');
 }
 
 // ─── Subscription cache ───────────────────────────────────────────────────────
@@ -221,12 +242,18 @@ function expandGuideSubscriptions() {
   }
 }
 
+let guideWatched = false;
+
 /**
  * Wait for the guide sidebar to render subscription entries, then expand
  * and read them. The guide loads asynchronously after the page content,
  * so we observe the DOM rather than relying on a fixed point in time.
+ * Only runs once, and only when "Exclude subscribed channels" is in use,
+ * since it clicks entries in the user's sidebar.
  */
 function watchForGuide() {
+  if (guideWatched) return;
+  guideWatched = true;
   if (document.querySelector('ytd-guide-entry-renderer a[href^="/@"]')) {
     expandGuideSubscriptions();
     return;
@@ -247,8 +274,7 @@ function getChannelPath(el) {
 }
 
 function filterLowViews(root, minViews) {
-  const selector = 'ytd-rich-item-renderer, ytd-video-renderer, ytd-compact-video-renderer';
-  queryAll(root, selector).forEach(el => {
+  queryAll(root, VIDEO_RENDERER_SELECTOR).forEach(el => {
     // Don't touch elements already hidden by another filter
     if (el.classList.contains('yt-sanitised')) return;
     const count = getViewCount(el);
@@ -286,40 +312,41 @@ function fullRescan() {
   applyFilters(document.body);
 }
 
-// ─── MutationObserver — catch dynamically added content ──────────────────────
+// ─── MutationObserver: catch dynamically added content ───────────────────────
 
-const VIDEO_RENDERER_SELECTOR =
-  'ytd-rich-item-renderer, ytd-compact-video-renderer, ytd-video-renderer';
+/**
+ * Filter a subtree. A video renderer is re-evaluated from scratch, because
+ * YouTube reuses renderer elements for new videos and a stale hide would stick.
+ */
+function refilter(root) {
+  if (root.matches(VIDEO_RENDERER_SELECTOR)) unsanitise(root);
+  applyFilters(root);
+}
 
-const VIDEO_RENDERER_TAGS = new Set([
-  'YTD-RICH-ITEM-RENDERER',
-  'YTD-COMPACT-VIDEO-RENDERER',
-  'YTD-VIDEO-RENDERER',
-]);
+const recheckScheduled = new WeakSet();
 
 const observer = new MutationObserver(mutations => {
-  // Deduplicate: for each added node also climb to the nearest video renderer,
+  // Filter each added node via its enclosing video renderer (when it has one),
   // so metadata injected after its container (lazy-load on scroll) triggers a
-  // filter pass on that container.
+  // pass over the whole container. The Set deduplicates nodes sharing one.
   const pending = new Set();
   for (const mutation of mutations) {
     for (const node of mutation.addedNodes) {
       if (node.nodeType !== Node.ELEMENT_NODE) continue;
-      pending.add(/** @type {Element} */ (node));
-      const renderer = /** @type {Element} */ (node).closest?.(VIDEO_RENDERER_SELECTOR);
-      if (renderer) pending.add(renderer);
+      const el = /** @type {Element} */ (node);
+      pending.add(el.closest(VIDEO_RENDERER_SELECTOR) || el);
+      // Freshly added renderers may still lack metadata: re-check once it settles.
+      if (el.matches(VIDEO_RENDERER_SELECTOR) && !recheckScheduled.has(el)) {
+        recheckScheduled.add(el);
+        setTimeout(() => {
+          recheckScheduled.delete(el);
+          refilter(el);
+        }, 800);
+      }
     }
   }
-  for (const node of pending) {
-    applyFilters(node);
-    // Fresh renderer containers may still lack metadata — re-check after it settles.
-    if (VIDEO_RENDERER_TAGS.has(node.tagName)) {
-      setTimeout(() => applyFilters(node), 800);
-    }
-  }
+  pending.forEach(refilter);
 });
-
-observer.observe(document.body, { childList: true, subtree: true });
 
 // ─── YouTube SPA navigation ───────────────────────────────────────────────────
 
@@ -335,17 +362,25 @@ document.addEventListener('yt-page-data-updated', () => {
 
 // ─── Settings: load and watch ─────────────────────────────────────────────────
 
+function watchGuideIfNeeded() {
+  if (settings.hideLowViews && settings.excludeSubscribed) watchForGuide();
+}
+
 chrome.storage.sync.get(DEFAULTS, stored => {
   settings = { ...DEFAULTS, ...stored };
-  applyFilters(document.body);
+  // Start observing only once the real settings are known, and rescan from
+  // scratch in case a navigation event already filtered with the defaults.
+  fullRescan();
+  observer.observe(document.body, { childList: true, subtree: true });
+  watchGuideIfNeeded();
 });
-
-watchForGuide();
 
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== 'sync') return;
   for (const [key, { newValue }] of Object.entries(changes)) {
-    if (key in settings) settings[key] = newValue;
+    // A removed key reports newValue undefined: fall back to its default
+    if (key in settings) settings[key] = newValue ?? DEFAULTS[key];
   }
+  watchGuideIfNeeded();
   fullRescan();
 });
