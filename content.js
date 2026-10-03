@@ -67,11 +67,16 @@ const VIEW_SUFFIX_MULTIPLIERS = {
   'rb': 1e3, 'jt': 1e6,                  // Indonesian (ribu, juta)
 };
 
-// Suffixes that mean something else in one locale, keyed by that locale's view word
+// Suffixes that mean something else in one language, keyed by the page language
 const VIEW_SUFFIX_OVERRIDES = {
-  'görüntüleme': { 'b': 1e3 },  // Turkish: B = bin (thousand)
-  'tayangan':    { 'm': 1e9 },  // Indonesian: M = miliar (billion)
+  tr: { 'b': 1e3 },  // Turkish: B = bin (thousand)
+  id: { 'm': 1e9 },  // Indonesian: M = miliar (billion)
 };
+
+function suffixMultiplier(suffix) {
+  const lang = document.documentElement.lang.split('-')[0];
+  return VIEW_SUFFIX_OVERRIDES[lang]?.[suffix] ?? VIEW_SUFFIX_MULTIPLIERS[suffix];
+}
 
 /**
  * Parse a number string that may use either comma or period as the
@@ -110,29 +115,46 @@ function parseLocaleNumber(str) {
  * Examples: "1.2K views", "1,2 t. visninger", "1.234 Aufrufe", "1,2 M de vues"
  * The number must be followed by a view word, optionally with a known magnitude
  * suffix (and "de"/"di") in between, so titles like "100 Reviews of ..." and
- * unknown suffixes are rejected rather than guessed. Returns a number or null.
+ * unknown suffixes are rejected rather than guessed. Pass bare=true when the
+ * caller already knows the text is a view count, to also accept it without the
+ * view word ("54.947", "20 mio."). Returns a number or null.
  */
-function parseViewText(text) {
+function parseViewText(text, bare = false) {
   if (NO_VIEWS_RE.test(text)) return 0;
   const m = text.match(/^(\d[\d.,]*)\s*(.*)/su);
   if (!m) return null;
   const n = parseLocaleNumber(m[1]);
   if (isNaN(n)) return null;
-  const [first, ...rest] = m[2].toLowerCase().split(/[\s.]+/);
+  const [first, ...rest] = m[2].toLowerCase().split(/[\s.]+/).filter(Boolean);
+  if (!first) return bare ? n : null;
   if (VIEW_WORD_RE.test(first)) return n;
+  const multiplier = suffixMultiplier(first);
+  if (!multiplier) return null;
+  if (bare && !rest.length) return n * multiplier;
   const viewWord = rest[0] === 'de' || rest[0] === 'di' ? rest[1] : rest[0];
-  if (!viewWord || !VIEW_WORD_RE.test(viewWord)) return null;
-  const multiplier = VIEW_SUFFIX_OVERRIDES[viewWord]?.[first] ?? VIEW_SUFFIX_MULTIPLIERS[first];
-  return multiplier ? n * multiplier : null;
+  return viewWord && VIEW_WORD_RE.test(viewWord) ? n * multiplier : null;
+}
+
+// Metadata slots in search results that hold only a view count or an upload age,
+// so a bare number there is the view count
+const VIEW_COUNT_SLOT_SELECTOR = '#metadata-line span.inline-metadata-item';
+
+/** True when an accessible label reads as a view count, e.g. "20 millioner visninger". */
+function isViewCountLabel(label) {
+  return !!label && label.toLowerCase().split(/\s+/).some(word => VIEW_WORD_RE.test(word));
 }
 
 /**
  * Extract view count from a video renderer element.
+ * Many locales now show the count without the view word ("54.947", "20 mio.")
+ * and only say "views" in the accessible label, so a span counts as a view
+ * count when its text, its label, or its slot in the card says so.
  * Returns a number or null.
  */
 function getViewCount(el) {
   for (const span of el.querySelectorAll('span')) {
-    const count = parseViewText(span.textContent.trim());
+    const bare = span.matches(VIEW_COUNT_SLOT_SELECTOR) || isViewCountLabel(span.getAttribute('aria-label'));
+    const count = parseViewText(span.textContent.trim(), bare);
     if (count !== null) return count;
   }
   return null;
@@ -140,20 +162,28 @@ function getViewCount(el) {
 
 // ─── Filter functions ─────────────────────────────────────────────────────────
 
+// Video cards: renderers (which may wrap a lockup, YouTube's current card
+// layout), and lockups that stand alone (watch-page sidebar, search results)
 const VIDEO_RENDERER_SELECTOR =
   'ytd-rich-item-renderer, ytd-compact-video-renderer, ytd-video-renderer';
+const CARD_SELECTOR = `${VIDEO_RENDERER_SELECTOR}, yt-lockup-view-model`;
+
+/** The card to hide for an element: its enclosing renderer, else its lockup. */
+function cardFor(el) {
+  return el.closest(VIDEO_RENDERER_SELECTOR) || el.closest('yt-lockup-view-model');
+}
 
 /**
- * Hide lockups (YouTube's current card layout) whose content ID starts with
- * prefix. Video IDs are always 11 characters, so this skips ordinary videos
- * whose ID happens to start with the same letters.
+ * Hide lockups whose content ID starts with prefix. Video IDs are always
+ * 11 characters, so this skips ordinary videos whose ID happens to start
+ * with the same letters.
  */
 function filterLockups(root, prefix) {
   queryAll(root, `[class*="content-id-${prefix}"]`).forEach(el => {
     const id = [...el.classList].find(c => c.startsWith('content-id-'))?.slice('content-id-'.length);
     if (!id?.startsWith(prefix) || id.length === 11) return;
-    const item = el.closest('ytd-rich-item-renderer, ytd-compact-video-renderer');
-    if (item) sanitise(item);
+    const card = cardFor(el);
+    if (card) sanitise(card);
   });
 }
 
@@ -198,14 +228,19 @@ function filterMixes(root) {
 // ─── Subscription cache ───────────────────────────────────────────────────────
 
 /**
- * In-memory set of known subscribed channel paths (e.g. "/@ChannelName").
- * Populated by reading the guide sidebar, expanding it if needed.
+ * In-memory sets of known subscribed channel paths (e.g. "/@ChannelName") and
+ * display names. Names are needed because lockup cards don't link to the
+ * channel. Populated by reading the guide sidebar, expanding it if needed.
  */
 let cachedSubscriptions = new Set();
+let cachedSubscriptionNames = new Set();
 
 function readGuideChannels() {
-  document.querySelectorAll('ytd-guide-entry-renderer a[href^="/@"]')
-    .forEach(a => cachedSubscriptions.add(a.getAttribute('href').split('?')[0]));
+  document.querySelectorAll('ytd-guide-entry-renderer a[href^="/@"]').forEach(a => {
+    cachedSubscriptions.add(a.getAttribute('href').split('?')[0]);
+    const name = (a.getAttribute('title') || a.textContent).trim();
+    if (name) cachedSubscriptionNames.add(name);
+  });
 }
 
 /**
@@ -273,16 +308,24 @@ function getChannelPath(el) {
   return a ? a.getAttribute('href').split('?')[0] : null;
 }
 
+/** Whether a card is from a subscribed channel, by channel link or, for lockups, by name. */
+function isFromSubscribedChannel(el) {
+  const channelPath = getChannelPath(el);
+  if (channelPath) return cachedSubscriptions.has(channelPath);
+  // A lockup's first metadata row is the channel name
+  const name = el.querySelector('yt-content-metadata-view-model [role="group"]')?.textContent.trim();
+  return !!name && cachedSubscriptionNames.has(name);
+}
+
 function filterLowViews(root, minViews) {
-  queryAll(root, VIDEO_RENDERER_SELECTOR).forEach(el => {
+  queryAll(root, CARD_SELECTOR).forEach(el => {
+    // A lockup inside a renderer is handled through that renderer
+    if (cardFor(el) !== el) return;
     // Don't touch elements already hidden by another filter
     if (el.classList.contains('yt-sanitised')) return;
     const count = getViewCount(el);
     if (count !== null && count < minViews) {
-      if (settings.excludeSubscribed) {
-        const channelPath = getChannelPath(el);
-        if (channelPath && cachedSubscriptions.has(channelPath)) return;
-      }
+      if (settings.excludeSubscribed && isFromSubscribedChannel(el)) return;
       sanitise(el);
     }
   });
@@ -319,28 +362,29 @@ function fullRescan() {
  * YouTube reuses renderer elements for new videos and a stale hide would stick.
  */
 function refilter(root) {
-  if (root.matches(VIDEO_RENDERER_SELECTOR)) unsanitise(root);
+  if (root.matches(CARD_SELECTOR)) unsanitise(root);
   applyFilters(root);
 }
 
 const recheckScheduled = new WeakSet();
 
 const observer = new MutationObserver(mutations => {
-  // Filter each added node via its enclosing video renderer (when it has one),
-  // so metadata injected after its container (lazy-load on scroll) triggers a
-  // pass over the whole container. The Set deduplicates nodes sharing one.
+  // Filter each added node via its enclosing card (when it has one), so
+  // metadata injected after its container (lazy-load on scroll) triggers a
+  // pass over the whole card. The Set deduplicates nodes sharing one.
   const pending = new Set();
   for (const mutation of mutations) {
     for (const node of mutation.addedNodes) {
       if (node.nodeType !== Node.ELEMENT_NODE) continue;
       const el = /** @type {Element} */ (node);
-      pending.add(el.closest(VIDEO_RENDERER_SELECTOR) || el);
-      // Freshly added renderers may still lack metadata: re-check once it settles.
-      if (el.matches(VIDEO_RENDERER_SELECTOR) && !recheckScheduled.has(el)) {
-        recheckScheduled.add(el);
+      const card = cardFor(el);
+      pending.add(card || el);
+      // Freshly added cards may still lack metadata: re-check once it settles.
+      if (card && el.matches(CARD_SELECTOR) && !recheckScheduled.has(card)) {
+        recheckScheduled.add(card);
         setTimeout(() => {
-          recheckScheduled.delete(el);
-          refilter(el);
+          recheckScheduled.delete(card);
+          refilter(card);
         }, 800);
       }
     }
