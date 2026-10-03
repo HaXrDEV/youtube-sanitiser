@@ -23,7 +23,7 @@ The view count filter understands YouTube in English, Danish, Norwegian, Swedish
 
 ## Installing
 
-It's waiting for review on the Chrome Web Store. Until it's there, you can load it yourself:
+You load it into Chrome yourself:
 
 1. Clone or download this repository.
 2. Open `chrome://extensions` and switch on **Developer mode** in the top-right corner.
