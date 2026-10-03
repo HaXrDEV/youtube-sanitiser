@@ -1,6 +1,6 @@
 ![Banner](docs/banner.svg)
 
-A Chrome extension that strips unwanted content from YouTube so only the videos you actually want to see remain.
+YouTube Sanitiser is a small Chrome extension that tidies up YouTube. It hides Shorts, playlists, mixes and, if you like, videos hardly anyone has watched, so your home page and sidebar are mostly the videos you actually came for.
 
 ![Manifest V3](https://img.shields.io/badge/Manifest-V3-red)
 ![Chrome](https://img.shields.io/badge/Chrome-extension-blue)
@@ -8,63 +8,25 @@ A Chrome extension that strips unwanted content from YouTube so only the videos 
 
 ![Screenshot](docs/screenshot.png)
 
----
+## What it hides
 
-## Filters
+Click the extension's icon in the toolbar and switch off whatever you don't want to see. Changes show up straight away in every open YouTube tab, and if you use Chrome sync, your settings follow you to your other computers.
 
-| Filter | What it hides |
-| --- | --- |
-| **Hide Shorts** | The Shorts shelf on the homepage and Shorts in the watch-page sidebar |
-| **Hide Playlists** | Playlist cards in the feed and sidebar (skipped on `/feed/playlists` and channel playlist tabs) |
-| **Hide Mixes** | YouTube-generated auto-mix playlists |
-| **Hide low view count** | Videos below a configurable minimum view threshold |
-| ↳ **Minimum views** | The view count threshold (default 10,000) |
-| ↳ **Exclude subscribed channels** | Exempt channels you subscribe to from the low-view filter |
+- **Shorts.** The Shorts shelf on the home page, and Shorts in the sidebar next to a video.
+- **Playlists.** Playlist cards in your feed, in search results and in the sidebar. They stay put on your library's playlists page and on a channel's Playlists tab, since that's where you'd go looking for them.
+- **Mixes.** The endless "Mix" playlists YouTube puts together for you.
+- **Low view count.** Hides videos with fewer views than a number you choose (10,000 to start with). Turn on **Exclude subscribed channels** if you still want everything from the channels you follow, however small they are. To know who you follow, it reads your subscriptions from YouTube's sidebar, briefly opening its "Show more" list. The list is never saved or sent anywhere (see the [privacy policy](privacy-policy.md)).
 
-All filters apply instantly when toggled, with no page refresh needed. Settings persist across browser restarts.
+Shorts, playlists and mixes are hidden from the moment you install it. The view count filter stays off until you turn it on.
 
----
+The view count filter understands YouTube in English, Danish, Norwegian, Swedish, German, French, Spanish, Portuguese, Italian, Dutch, Finnish, Polish, Russian, Turkish and Indonesian. In other languages it may not recognise every count, and a video whose count it can't read is left alone.
 
-## Installation
+## Installing
 
-### Chrome Web Store (coming soon)
+It's waiting for review on the Chrome Web Store. Until it's there, you can load it yourself:
 
-The extension is pending Chrome Web Store review. Once published, it will be available to install there with no setup required.
+1. Clone or download this repository.
+2. Open `chrome://extensions` and switch on **Developer mode** in the top-right corner.
+3. Click **Load unpacked** and pick the repository folder.
 
-### Load unpacked (developer)
-
-1. Clone or download this repository
-2. Go to `chrome://extensions`
-3. Enable **Developer mode** (toggle in the top-right)
-4. Click **Load unpacked** and select the repo folder
-
-To pick up code changes after editing files, click the reload button (↺) on the extension card in `chrome://extensions`, then refresh any open YouTube tabs.
-
----
-
-## How it works
-
-- A **content script** (`content.js`) runs on every `youtube.com` page and injects `.yt-sanitised { display: none !important }`, so filtered elements are removed from layout with no blank gaps left behind
-- A **MutationObserver** catches videos that load dynamically as you scroll; each added node is filtered via its enclosing video renderer, which is re-evaluated from scratch, so late-arriving view-count metadata and renderers YouTube reuses for new videos are handled correctly
-- **SPA navigation** is handled by listening to the `yt-navigate-finish` and `yt-page-data-updated` events YouTube fires on every client-side route change
-- Settings are stored in `chrome.storage.sync`; the content script listens to `chrome.storage.onChanged`, so every open YouTube tab updates live whenever a toggle is flipped
-- **Exclude subscribed channels** reads your subscriptions from the YouTube sidebar (briefly expanding its "Show more" list); this only happens while that option is turned on
-
----
-
-## Project Structure
-
-```text
-youtube-sanitiser/
-├── manifest.json       Chrome extension manifest (MV3)
-├── defaults.js         Default settings, shared by the content script and popup
-├── content.js          Filter logic, MutationObserver, view-count parser
-├── popup.html          Settings popup structure
-├── popup.css           Dark YouTube-style theme with CSS toggle switches
-├── popup.js            Load/save settings in chrome.storage.sync
-└── icons/
-    ├── generate.html   Regenerates the icon PNGs if the design changes
-    ├── icon16.png
-    ├── icon48.png
-    └── icon128.png
-```
+If you change the code, click the reload button (↺) on the extension's card and refresh your YouTube tabs to see it. If you're curious how it finds and hides things, [docs/how-it-works.md](docs/how-it-works.md) walks through it.
